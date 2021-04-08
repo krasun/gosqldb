@@ -32,7 +32,7 @@ func handler(db *Database) func(w http.ResponseWriter, r *http.Request) {
 func decodeQuery(queryType string, requestBody io.ReadCloser) (interface{}, error) {
 	switch queryType {
 	case "create_table":
-		var query InsertQuery
+		var query CreateTableQuery
 		err := decode(&query, requestBody)
 
 		return query, err

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"path"
@@ -18,10 +20,10 @@ var isValidColumnNameFormat = entityNameRegExp.MatchString
 
 // name of the meta file that stores information about
 // table structures and other database meta information
-const metaFileName = "gosqldb.meta"
+const metaFileName = "gosqldb.meta.json"
 
 // table file extension
-const tableFileExtension = ".table"
+const tableFileExtension = ".table.json"
 
 // Database is an orchestractor and main entry point for working
 // with a database.
@@ -220,7 +222,8 @@ func (db *Database) Insert(query InsertQuery) error {
 		}
 	}
 
-	err := db.writeToFile(tableName, insertColumns, query.Values)
+	newRows := sortValues(table, insertColumns, query.Values)
+	err := db.writeToFile(tableName, newRows)
 	if err != nil {
 		return fmt.Errorf("failed to write to file: %w", err)
 	}
@@ -229,8 +232,44 @@ func (db *Database) Insert(query InsertQuery) error {
 	return nil
 }
 
-func (db *Database) writeToFile(tableName string, insertColumns map[string]int, values [][]interface{}) error {
-	_ := db.tableFilePath(tableName)
+func (db *Database) writeToFile(tableName string, newRows [][]interface{}) error {
+	tableFilePath := db.tableFilePath(tableName)
+	data, err := ioutil.ReadFile(tableFilePath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read file %s: %w", tableFilePath, err)
+	}
+
+	var rows [][]interface{}
+	var file *os.File
+	defer func() {
+		if file != nil {
+			checkFileClose(tableFilePath, file.Close())
+		}
+	}()
+
+	if os.IsNotExist(err) {
+		rows = make([][]interface{}, 0)
+	} else {
+		err := json.Unmarshal(data, &rows)
+		if err != nil {
+			return fmt.Errorf("failed to decode JSON from %s: %w", tableFilePath, err)
+		}
+	}
+
+	file, err = os.Create(tableFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to create/open file for write %s: %w", tableFilePath, err)
+	}
+	
+	rows = append(rows, newRows...)
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "\t")
+
+	err = encoder.Encode(rows)
+	if err != nil {
+		return fmt.Errorf("failed to encode JSON and write to file for %s: %w", tableFilePath, err)
+	}
 
 	return nil
 }
@@ -246,5 +285,21 @@ func (db *Database) Delete(query DeleteQuery) {
 }
 
 func (db *Database) tableFilePath(tableName string) string {
-	return path.Join(db.dbDir, tableName) + ".table"
+	return path.Join(db.dbDir, tableName) + tableFileExtension
+}
+
+func sortValues(table Table, insertColumns map[string]int, values [][]interface{}) [][]interface{} {
+	newRows := make([][]interface{}, len(values))
+	for rowIndex, row := range values {
+		newRow := make([]interface{}, len(row))
+
+		for columnName, index := range insertColumns {
+			position := table.Columns[columnName].Position
+			newRow[position] = row[index]
+		}
+
+		newRows[rowIndex] = newRow
+	}
+
+	return newRows
 }
