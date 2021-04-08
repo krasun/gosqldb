@@ -36,19 +36,19 @@ type Database struct {
 	metaFilePath string
 	// pointers to the tables
 	// by lowercase table names
-	tables map[string]Table
+	tables map[string]Schema
 	// data by table name
 	data map[string][][]interface{}
 }
 
-// Table represents a database table schema.
-type Table struct {
-	Name    string                 `json:"name"`
-	Columns map[string]TableColumn `json:"columns"`
+// Schema represents a database table schema.
+type Schema struct {
+	Name    string               `json:"name"`
+	Columns map[string]ColumnDef `json:"columns"`
 }
 
-// TableColumn describes a table column.
-type TableColumn struct {
+// ColumnDef describes a table column.
+type ColumnDef struct {
 	Name     string `json:"name"`
 	Type     string `json:"type"`
 	Position int    `json:"position"`
@@ -72,12 +72,12 @@ func NewDatabase(dbDir string) (*Database, error) {
 		return nil, fmt.Errorf("failed to initialize meta file %s: %w", metaFilePath, err)
 	}
 
-	tables, err := loadTables(metaFilePath)
+	tables, err := loadSchema(metaFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load tables: %w", err)
 	}
 
-	tableData, err := loadTableData(dbDir, tables)
+	tableData, err := loadData(dbDir, tables)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load data: %w", err)
 	}
@@ -110,7 +110,7 @@ func (db *Database) CreateTable(query CreateTableQuery) error {
 		return fmt.Errorf("failed to create %s: table must have at least one column", query.TableName)
 	}
 
-	tableColumns := make(map[string]TableColumn)
+	tableColumns := make(map[string]ColumnDef)
 
 	// to detect column definition duplicates
 	columnNames := make(map[string]struct{})
@@ -135,13 +135,13 @@ func (db *Database) CreateTable(query CreateTableQuery) error {
 
 		columnNames[columnName] = struct{}{}
 
-		tableColumns[columnName] = TableColumn{Name: columnName, Type: columnType, Position: columnPosition}
+		tableColumns[columnName] = ColumnDef{Name: columnName, Type: columnType, Position: columnPosition}
 	}
 
-	table := Table{Name: tableName, Columns: tableColumns}
+	table := Schema{Name: tableName, Columns: tableColumns}
 
 	db.tables[tableName] = table
-	err := storeTables(db.metaFilePath, db.tables)
+	err := storeSchema(db.metaFilePath, db.tables)
 	if err != nil {
 		return fmt.Errorf("failed to store tables: %w", err)
 	}
@@ -150,37 +150,40 @@ func (db *Database) CreateTable(query CreateTableQuery) error {
 }
 
 // Select fetches data from the database.
-func (db *Database) Select(query SelectQuery) error {
+func (db *Database) Select(query SelectQuery) ([][]interface{}, error) {
 	tableName := strings.ToLower(query.From)
-	_, exists := db.data[tableName]
+	tableData, exists := db.data[tableName]
 	if !exists {
-		return fmt.Errorf("table %s does not exist", tableName)
+		return nil, fmt.Errorf("table %s does not exist", tableName)
 	}
 
-	// // @todo validate select query
-	// matched := make([]map[string]interface{}, 0)
-	// for _, row := range tableData.data {
-	// 	if matches(row, query.Where) {
-	// 		matched = append(matched, row)
-	// 	}
-	// }
+	schema := db.tables[tableName]
 
-	return nil
+	// // @todo validate select query
+
+	matched := make([][]interface{}, 0)
+	for _, row := range tableData {
+		if matches(schema, row, query.Where) {
+			matched = append(matched, row)
+		}
+	}
+
+	return matched, nil
 }
 
-func matches(row map[string]interface{}, exprs []WhereExpression) bool {
+func matches(schema Schema, row []interface{}, exprs []WhereExpression) bool {
 	for _, expr := range exprs {
-		if !exprMatch(row, expr) {
+		if !exprMatch(schema, row, expr) {
 			return false
 		}
 	}
 
-	return false
+	return true
 }
 
-func exprMatch(row map[string]interface{}, expr WhereExpression) bool {
+func exprMatch(schema Schema, row []interface{}, expr WhereExpression) bool {
 
-	return false
+	return true
 }
 
 // Insert inserts data into the database.
@@ -231,7 +234,7 @@ func (db *Database) Insert(query InsertQuery) error {
 }
 
 func (db *Database) writeToFile(tableName string, newRows [][]interface{}) error {
-	tableFilePath := db.tableFilePath(tableName)
+	tableFilePath := tableFilePath(db.dbDir, tableName)
 	data, err := ioutil.ReadFile(tableFilePath)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to read file %s: %w", tableFilePath, err)
@@ -282,11 +285,11 @@ func (db *Database) Delete(query DeleteQuery) {
 
 }
 
-func (db *Database) tableFilePath(tableName string) string {
-	return path.Join(db.dbDir, tableName) + tableFileExtension
+func tableFilePath(dbDir string, tableName string) string {
+	return path.Join(dbDir, tableName) + tableFileExtension
 }
 
-func sortValues(table Table, insertColumns map[string]int, values [][]interface{}) [][]interface{} {
+func sortValues(table Schema, insertColumns map[string]int, values [][]interface{}) [][]interface{} {
 	newRows := make([][]interface{}, len(values))
 	for rowIndex, row := range values {
 		newRow := make([]interface{}, len(row))
@@ -300,4 +303,92 @@ func sortValues(table Table, insertColumns map[string]int, values [][]interface{
 	}
 
 	return newRows
+}
+
+func initializeMetaFile(metaFilePath string) error {
+	_, err := os.Stat(metaFilePath)
+	if err == nil {
+		log.Printf("meta file %s has been already initialized\n", metaFilePath)
+		return nil
+	}
+
+	if os.IsNotExist(err) {
+		log.Printf("meta file %s does not exist, creating a new one...\n", metaFilePath)
+		err = storeSchema(metaFilePath, make(map[string]Schema))
+		if err != nil {
+			return fmt.Errorf("failed to store empty table map to %s: %w", metaFilePath, err)
+		}
+
+		return nil
+	}
+
+	return fmt.Errorf("failed to read information about %s: %w", metaFilePath, err)
+}
+
+func loadSchema(metaFilePath string) (map[string]Schema, error) {
+	metaFile, err := os.Open(metaFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file %s: %w", metaFilePath, err)
+	}
+	defer func() { checkFileClose(metaFilePath, metaFile.Close()) }()
+
+	var tables map[string]Schema
+
+	decoder := json.NewDecoder(metaFile)
+	err = decoder.Decode(&tables)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode JSON from %s: %w", metaFilePath, err)
+	}
+
+	return tables, nil
+}
+
+func storeSchema(metaFilePath string, tables map[string]Schema) error {
+	metaFile, err := os.Create(metaFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to create file %s: %w", metaFilePath, err)
+	}
+	defer func() { checkFileClose(metaFilePath, metaFile.Close()) }()
+
+	encoder := json.NewEncoder(metaFile)
+	encoder.SetIndent("", "\t")
+
+	err = encoder.Encode(tables)
+	if err != nil {
+		return fmt.Errorf("failed to encode JSON for %s: %w", metaFilePath, err)
+	}
+
+	return nil
+}
+
+func loadData(dbDir string, tables map[string]Schema) (map[string][][]interface{}, error) {
+	tableData := make(map[string][][]interface{}, 0)
+	for tableName, _ := range tables {
+		tableFilePath := tableFilePath(dbDir, tableName)
+
+		data, err := ioutil.ReadFile(tableFilePath)
+		if err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("failed to read file %s: %w", tableFilePath, err)
+		}
+
+		var rows [][]interface{}
+		if os.IsNotExist(err) {
+			rows = make([][]interface{}, 0)
+		} else {
+			err = json.Unmarshal(data, &rows)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decode JSON from %s: %w", tableFilePath, err)
+			}
+		}
+
+		tableData[tableName] = rows
+	}
+
+	return tableData, nil
+}
+
+func checkFileClose(filePath string, err error) {
+	if err != nil {
+		panic(fmt.Errorf("failed to close file %s: %w", filePath, err))
+	}
 }

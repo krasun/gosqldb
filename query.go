@@ -12,19 +12,11 @@ type CreateTableQuery struct {
 
 // SelectQuery is a DQL (Data Query Language) query for fetching data from the database.
 type SelectQuery struct {
-	Columns []string
 	From    string
-	Where   []WhereExpression
-	OrderBy OrderByExpression
-	Limit   int
+	Where   []WhereExpression	
 }
 
-// OrderByExpression represents ORDER BY part of the SQL query.
-type OrderByExpression struct {
-	Column string
-	Order  string
-}
-
+// Operand is an operand in WHERE expression
 type Operand struct {
 	Value interface{}
 	Type  string

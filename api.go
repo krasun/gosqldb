@@ -18,14 +18,13 @@ func handler(db *Database) func(w http.ResponseWriter, r *http.Request) {
 		}
 
 		log.Printf("executing query: %s\n", query)
-		err = executeQuery(db, query)
-		log.Printf("execution result err=%v\n", err)
+		result, err := executeQuery(db, query)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		fmt.Fprintln(w, "the query has been succesfully executed")
+		fmt.Fprintf(w, "the query has been succesfully executed: %v\n", result)
 	}
 }
 
@@ -60,15 +59,15 @@ func decode(query interface{}, requestBody io.ReadCloser) error {
 	return nil
 }
 
-func executeQuery(db *Database, q interface{}) error {
+func executeQuery(db *Database, q interface{}) (interface{}, error) {
 	switch query := q.(type) {
 	case CreateTableQuery:
-		return db.CreateTable(query)
+		return nil, db.CreateTable(query)
 	case InsertQuery:
-		return db.Insert(query)
+		return nil, db.Insert(query)
 	case SelectQuery:
 		return db.Select(query)
 	default:
-		return fmt.Errorf("unsupported query type: %T", query)
+		return nil, fmt.Errorf("unsupported query type: %T", query)
 	}
 }
