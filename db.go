@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -9,11 +8,6 @@ import (
 	"regexp"
 	"strings"
 )
-
-var columnTypes = map[string]struct{}{
-	"integer": {},
-	"string":  {},
-}
 
 // regular expressions to check table and column names
 var entityNameRegExp = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
@@ -25,6 +19,9 @@ var isValidColumnNameFormat = entityNameRegExp.MatchString
 // name of the meta file that stores information about
 // table structures and other database meta information
 const metaFileName = "gosqldb.meta"
+
+// table file extension
+const tableFileExtension = ".table"
 
 // Database is an orchestractor and main entry point for working
 // with a database.
@@ -38,9 +35,11 @@ type Database struct {
 	// pointers to the tables
 	// by lowercase table names
 	tables map[string]Table
+	// data by table name
+	data map[string]tableData
 }
 
-// Table represents a database table.
+// Table represents a database table schema.
 type Table struct {
 	Name    string                 `json:"name"`
 	Columns map[string]TableColumn `json:"columns"`
@@ -48,8 +47,14 @@ type Table struct {
 
 // TableColumn describes a table column.
 type TableColumn struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	Position int    `json:"position"`
+}
+
+// tableData represents data of one table.
+type tableData struct {
+	data []map[string]interface{}
 }
 
 // NewDatabase creates new instance of the database and loads
@@ -75,73 +80,17 @@ func NewDatabase(dbDir string) (*Database, error) {
 		return nil, fmt.Errorf("failed to load tables: %w", err)
 	}
 
+	tableData, err := loadTableData(dbDir, tables)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load data: %w", err)
+	}
+
 	return &Database{
 		dbDir,
 		metaFilePath,
 		tables,
+		tableData,
 	}, nil
-}
-
-func initializeMetaFile(metaFilePath string) error {
-	_, err := os.Stat(metaFilePath)
-	if err == nil {
-		log.Printf("meta file %s has been already initialized\n", metaFilePath)
-		return nil
-	}
-
-	if os.IsNotExist(err) {
-		log.Printf("meta file %s does not exist, creating a new one...\n", metaFilePath)
-		err = storeTables(metaFilePath, make(map[string]Table))
-		if err != nil {
-			return fmt.Errorf("failed to store empty table map to %s: %w", metaFilePath, err)
-		}
-
-		return nil
-	}
-
-	return fmt.Errorf("failed to read information about %s: %w", metaFilePath, err)
-}
-
-func loadTables(metaFilePath string) (map[string]Table, error) {
-	metaFile, err := os.Open(metaFilePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open file %s: %w", metaFilePath, err)
-	}
-	defer func() { checkFileClose(metaFilePath, metaFile.Close()) }()
-
-	var tables map[string]Table
-
-	decoder := json.NewDecoder(metaFile)
-	err = decoder.Decode(&tables)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode JSON from %s: %w", metaFilePath, err)
-	}
-
-	return tables, nil
-}
-
-func storeTables(metaFilePath string, tables map[string]Table) error {
-	metaFile, err := os.Create(metaFilePath)
-	if err != nil {
-		return fmt.Errorf("failed to create file %s: %w", metaFilePath, err)
-	}
-	defer func() { checkFileClose(metaFilePath, metaFile.Close()) }()
-
-	encoder := json.NewEncoder(metaFile)
-	encoder.SetIndent("", "\t")
-
-	err = encoder.Encode(tables)
-	if err != nil {
-		return fmt.Errorf("failed to encode JSON for %s: %w", metaFilePath, err)
-	}
-
-	return nil
-}
-
-func checkFileClose(filePath string, err error) {
-	if err != nil {
-		panic(fmt.Errorf("failed to close file %s: %w", filePath, err))
-	}
 }
 
 // CreateTable creates a table.
@@ -168,7 +117,7 @@ func (db *Database) CreateTable(query CreateTableQuery) error {
 
 	// to detect column definition duplicates
 	columnNames := make(map[string]struct{})
-	for _, column := range query.Columns {
+	for columnPosition, column := range query.Columns {
 		columnName := strings.ToLower(column.Name)
 		if len(columnName) == 0 {
 			return fmt.Errorf("column name is empty for table %s", query.TableName)
@@ -189,7 +138,7 @@ func (db *Database) CreateTable(query CreateTableQuery) error {
 
 		columnNames[columnName] = struct{}{}
 
-		tableColumns[columnName] = TableColumn{Name: columnName, Type: columnType}
+		tableColumns[columnName] = TableColumn{Name: columnName, Type: columnType, Position: columnPosition}
 	}
 
 	table := Table{Name: tableName, Columns: tableColumns}
@@ -203,44 +152,87 @@ func (db *Database) CreateTable(query CreateTableQuery) error {
 	return nil
 }
 
-// RenameTable creates renames a table.
-func (db *Database) RenameTable(query RenameTableQuery) {
-
-}
-
-// DropTable drops a table.
-func (db *Database) DropTable(query DropTableQuery) {
-
-}
-
-// AddColumn creates adds a column.
-func (db *Database) AddColumn(query AddColumnQuery) {
-
-}
-
-// RenameColumn creates renames a column.
-func (db *Database) RenameColumn(query RenameColumnQuery) {
-
-}
-
-// DropColumn changes a column type.
-func (db *Database) ChangeColumnType(query ChangeColumnTypeQuery) {
-
-}
-
-// DropColumn drops a column.
-func (db *Database) DropColumn(query DropColumnQuery) {
-
-}
-
 // Select fetches data from the database.
-func (db *Database) Select(query SelectQuery) {
+func (db *Database) Select(query SelectQuery) error {
+	tableName := strings.ToLower(query.From)
+	tableData, exists := db.data[tableName]
+	if !exists {
+		return fmt.Errorf("table %s does not exist", tableName)
+	}
 
+	// @todo validate select query
+	matched := make([]map[string]interface{}, 0)
+	for _, row := range tableData.data {
+		if matches(row, query.Where) {
+			matched = append(matched, row)
+		}
+	}
+
+	return nil
+}
+
+func matches(row map[string]interface{}, exprs []WhereExpression) bool {
+	for _, expr := range exprs {
+		if !exprMatch(row, expr) {
+			return false
+		}
+	}
+
+	return false
+}
+
+func exprMatch(row map[string]interface{}, expr WhereExpression) bool {
+
+	return false
 }
 
 // Insert inserts data into the database.
-func (db *Database) Insert(query InsertQuery) {
+func (db *Database) Insert(query InsertQuery) error {
+	tableName := strings.ToLower(query.TableName)
+	table, exists := db.tables[tableName]
+	if !exists {
+		return fmt.Errorf("table %s does not exist", tableName)
+	}
 
+	if len(query.Values) == 0 {
+		return fmt.Errorf("empty values, at least one is required")
+	}
+
+	var insertColumns = make(map[string]int)
+	for index, column := range query.Columns {
+		columnName := strings.ToLower(column)
+		if _, exists := table.Columns[columnName]; !exists {
+			return fmt.Errorf("column %s does not exist in table %s", column, tableName)
+		}
+
+		insertColumns[columnName] = index
+	}
+
+	for _, requiredColumn := range table.Columns {
+		if _, exists := insertColumns[requiredColumn.Name]; !exists {
+			return fmt.Errorf("%s column value is not provided", requiredColumn.Name)
+		}
+	}
+
+	for row, values := range query.Values {
+		if len(values) != len(query.Columns) {
+			return fmt.Errorf("the number of values must be equal to the number of columns at row %d", row)
+		}
+	}
+
+	err := db.writeToFile(tableName, insertColumns, query.Values)
+	if err != nil {
+		return fmt.Errorf("failed to write to file: %w", err)
+	}
+	log.Printf("the record has been inserted succesfully into %s", tableName)
+
+	return nil
+}
+
+func (db *Database) writeToFile(tableName string, insertColumns map[string]int, values [][]interface{}) error {
+	_ := db.tableFilePath(tableName)
+
+	return nil
 }
 
 // Update updates data in the database.
@@ -251,4 +243,8 @@ func (db *Database) Update(query UpdateQuery) {
 // Delete deletes data from the database.
 func (db *Database) Delete(query DeleteQuery) {
 
+}
+
+func (db *Database) tableFilePath(tableName string) string {
+	return path.Join(db.dbDir, tableName) + ".table"
 }
