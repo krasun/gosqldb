@@ -63,18 +63,13 @@ func storeTables(metaFilePath string, tables map[string]Table) error {
 	return nil
 }
 
-func loadTableData(dbDir string, tables map[string]Table) (map[string]tableData, error) {
+func loadTableData(dbDir string, tables map[string]Table) (map[string][][]interface{}, error) {
 	// for tableName, table := range tables {
 
 	// }
 
 	return nil, nil
 }
-
-func appendToFile() {
-	
-}
-
 
 func checkFileClose(filePath string, err error) {
 	if err != nil {

@@ -38,7 +38,7 @@ type Database struct {
 	// by lowercase table names
 	tables map[string]Table
 	// data by table name
-	data map[string]tableData
+	data map[string][][]interface{}
 }
 
 // Table represents a database table schema.
@@ -52,11 +52,6 @@ type TableColumn struct {
 	Name     string `json:"name"`
 	Type     string `json:"type"`
 	Position int    `json:"position"`
-}
-
-// tableData represents data of one table.
-type tableData struct {
-	data []map[string]interface{}
 }
 
 // NewDatabase creates new instance of the database and loads
@@ -157,18 +152,18 @@ func (db *Database) CreateTable(query CreateTableQuery) error {
 // Select fetches data from the database.
 func (db *Database) Select(query SelectQuery) error {
 	tableName := strings.ToLower(query.From)
-	tableData, exists := db.data[tableName]
+	_, exists := db.data[tableName]
 	if !exists {
 		return fmt.Errorf("table %s does not exist", tableName)
 	}
 
-	// @todo validate select query
-	matched := make([]map[string]interface{}, 0)
-	for _, row := range tableData.data {
-		if matches(row, query.Where) {
-			matched = append(matched, row)
-		}
-	}
+	// // @todo validate select query
+	// matched := make([]map[string]interface{}, 0)
+	// for _, row := range tableData.data {
+	// 	if matches(row, query.Where) {
+	// 		matched = append(matched, row)
+	// 	}
+	// }
 
 	return nil
 }
@@ -229,6 +224,9 @@ func (db *Database) Insert(query InsertQuery) error {
 	}
 	log.Printf("the record has been inserted succesfully into %s", tableName)
 
+	// store the data in-memory
+	db.data[tableName] = append(db.data[tableName], newRows...)
+
 	return nil
 }
 
@@ -260,7 +258,7 @@ func (db *Database) writeToFile(tableName string, newRows [][]interface{}) error
 	if err != nil {
 		return fmt.Errorf("failed to create/open file for write %s: %w", tableFilePath, err)
 	}
-	
+
 	rows = append(rows, newRows...)
 
 	encoder := json.NewEncoder(file)
