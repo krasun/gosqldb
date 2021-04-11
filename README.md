@@ -11,6 +11,18 @@ How do you understand them better? Reinvent!
 
 gosqldb is a database implementation created solely for my learning exploration of how databases work.
 
+## Roadmap 
+
+- [X] create table DDL query;
+- [X] insert;
+- [X] select;
+- [X] update;
+- [X] delete;
+- [ ] table lock;
+- [ ] LSM; 
+- [ ] B-tree;
+- [ ] parse SQL;
+
 ## License 
 
 gosqldb is released under [the MIT license](LICENSE).
