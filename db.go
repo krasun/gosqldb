@@ -376,7 +376,44 @@ func updateValues(schema Schema, exprs []SetExpression, row []interface{}) []int
 
 // Delete deletes data from the database.
 func (db *Database) Delete(query DeleteQuery) (int, error) {
-	return 0, nil
+	tableName := strings.ToLower(query.TableName)
+	schema, exists := db.tables[tableName]
+	if !exists {
+		return 0, fmt.Errorf("table %s does not exist", tableName)
+	}
+
+	err := validateWhereExpr(schema, query.Where)
+	if err != nil {
+		return 0, fmt.Errorf("invalid WHERE part: %w", err)
+	}
+
+	tableData := db.data[tableName]
+	deleteCnt := 0
+	deleteRows := make(map[int]struct{})
+	for index, row := range tableData {
+		if matches(schema, row, query.Where) {
+			deleteRows[index] = struct{}{}
+			deleteCnt++
+		}
+	}
+
+	err = db.deleteRowsInFile(tableName, deleteRows)
+	if err != nil {
+		return 0, fmt.Errorf("failed to update file: %w", err)
+	}
+	log.Printf("the records has been deleted succesfully for %s", tableName)
+
+	// update the data in-memory
+	newRows := make([][]interface{}, 0)
+	for index, row := range db.data[tableName] {
+		if _, del := deleteRows[index]; del {
+			continue
+		}
+		newRows = append(newRows, row)
+	}
+	db.data[tableName] = newRows
+
+	return deleteCnt, nil
 }
 
 func tableFilePath(dbDir string, tableName string) string {
@@ -521,6 +558,21 @@ func loadData(dbDir string, tables map[string]Schema) (map[string][][]interface{
 	}
 
 	return tableData, nil
+}
+
+func (db *Database) deleteRowsInFile(tableName string, deleteRows map[int]struct{}) error {
+	return db.updateFile(tableName, func(rows [][]interface{}) ([][]interface{}, error) {
+		newRows := make([][]interface{}, 0)
+		for index, row := range rows {
+			if _, del := deleteRows[index]; del {
+				continue
+			}
+
+			newRows = append(newRows, row)
+		}
+
+		return newRows, nil
+	})
 }
 
 func (db *Database) updateRowsInFile(tableName string, updateRows map[int][]interface{}) error {

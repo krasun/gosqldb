@@ -50,6 +50,11 @@ func decodeQuery(queryType string, requestBody io.ReadCloser) (interface{}, erro
 		err := decode(&query, requestBody)
 
 		return query, err
+	case "delete":
+		var query DeleteQuery
+		err := decode(&query, requestBody)
+
+		return query, err
 	default:
 		return nil, fmt.Errorf("unsupported query type %s", queryType)
 	}
