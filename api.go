@@ -63,10 +63,14 @@ func executeQuery(db *Database, q interface{}) (interface{}, error) {
 	switch query := q.(type) {
 	case CreateTableQuery:
 		return nil, db.CreateTable(query)
-	case InsertQuery:
-		return nil, db.Insert(query)
 	case SelectQuery:
-		return db.Select(query)
+		return db.Select(query)	
+	case InsertQuery:
+		return nil, db.Insert(query)	
+	case UpdateQuery: 
+		return db.Update(query)
+	case DeleteQuery: 
+		return db.Delete(query)
 	default:
 		return nil, fmt.Errorf("unsupported query type: %T", query)
 	}

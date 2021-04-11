@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"reflect"
 	"regexp"
 	"strings"
 )
@@ -52,6 +53,17 @@ type ColumnDef struct {
 	Name     string `json:"name"`
 	Type     string `json:"type"`
 	Position int    `json:"position"`
+}
+
+func (def ColumnDef) ReflectType() reflect.Type {
+	switch def.Type {
+	case "integer":
+		return reflect.TypeOf(0)
+	case "string":
+		return reflect.TypeOf("")
+	}
+
+	return nil
 }
 
 // NewDatabase creates new instance of the database and loads
@@ -152,15 +164,17 @@ func (db *Database) CreateTable(query CreateTableQuery) error {
 // Select fetches data from the database.
 func (db *Database) Select(query SelectQuery) ([][]interface{}, error) {
 	tableName := strings.ToLower(query.From)
-	tableData, exists := db.data[tableName]
+	schema, exists := db.tables[tableName]
 	if !exists {
 		return nil, fmt.Errorf("table %s does not exist", tableName)
 	}
 
-	schema := db.tables[tableName]
+	err := validateWhereExpr(schema, query.Where)
+	if err != nil {
+		return nil, fmt.Errorf("invalid WHERE statement: %w", err)
+	}
 
-	// // @todo validate select query
-
+	tableData := db.data[tableName]
 	matched := make([][]interface{}, 0)
 	for _, row := range tableData {
 		if matches(schema, row, query.Where) {
@@ -168,9 +182,65 @@ func (db *Database) Select(query SelectQuery) ([][]interface{}, error) {
 		}
 	}
 
-	fmt.Println(matched)
-
 	return matched, nil
+}
+
+func validateWhereExpr(schema Schema, whereExprs []WhereExpression) error {
+	for i, expr := range whereExprs {
+		_, err := validateOperand(schema, expr.Left)
+		if err != nil {
+			return fmt.Errorf("invalid left operand at %d: %w", i, err)
+		}
+
+		_, err = validateOperand(schema, expr.Right)
+		if err != nil {
+			return fmt.Errorf("invalid right operand at %d: %w", i, err)
+		}
+
+		// how to validate types:
+		// if rt != lt {
+		// 	return fmt.Errorf("operand types do not match: %s != %s", lt, rt)
+		// }
+
+		err = validateOperation(expr.Operation)
+		if err != nil {
+			return fmt.Errorf("invalid operation at %d: %w", i, err)
+		}
+	}
+
+	return nil
+}
+
+func validateOperation(op string) error {
+	switch op {
+	case "eq":
+		return nil
+	default:
+		return fmt.Errorf("unsupported operation: %s", op)
+	}
+}
+
+func validateOperand(schema Schema, operand Operand) (reflect.Type, error) {
+	operandType := strings.ToLower(operand.Type)
+	switch operandType {
+	case "value":
+		return reflect.TypeOf(operand.Value), nil
+	case "identifier":
+		val, ok := operand.Value.(string)
+		if !ok {
+			return nil, fmt.Errorf("identifier %v is not a string", operand.Value)
+		}
+
+		column := strings.ToLower(val)
+		_, exists := schema.Columns[column]
+		if !exists {
+			return nil, fmt.Errorf("column %s does not exist")
+		}
+
+		return schema.Columns[column].ReflectType(), nil
+	default:
+		return nil, fmt.Errorf("unsupported operand type %s", operand.Type)
+	}
 }
 
 func matches(schema Schema, row []interface{}, exprs []WhereExpression) bool {
@@ -249,56 +319,14 @@ func (db *Database) Insert(query InsertQuery) error {
 	return nil
 }
 
-func (db *Database) writeToFile(tableName string, newRows [][]interface{}) error {
-	tableFilePath := tableFilePath(db.dbDir, tableName)
-	data, err := ioutil.ReadFile(tableFilePath)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to read file %s: %w", tableFilePath, err)
-	}
-
-	var rows [][]interface{}
-	var file *os.File
-	defer func() {
-		if file != nil {
-			checkFileClose(tableFilePath, file.Close())
-		}
-	}()
-
-	if os.IsNotExist(err) {
-		rows = make([][]interface{}, 0)
-	} else {
-		err := json.Unmarshal(data, &rows)
-		if err != nil {
-			return fmt.Errorf("failed to decode JSON from %s: %w", tableFilePath, err)
-		}
-	}
-
-	file, err = os.Create(tableFilePath)
-	if err != nil {
-		return fmt.Errorf("failed to create/open file for write %s: %w", tableFilePath, err)
-	}
-
-	rows = append(rows, newRows...)
-
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "\t")
-
-	err = encoder.Encode(rows)
-	if err != nil {
-		return fmt.Errorf("failed to encode JSON and write to file for %s: %w", tableFilePath, err)
-	}
-
-	return nil
-}
-
 // Update updates data in the database.
-func (db *Database) Update(query UpdateQuery) {
-
+func (db *Database) Update(query UpdateQuery) (int, error) {
+	return 0, nil
 }
 
 // Delete deletes data from the database.
-func (db *Database) Delete(query DeleteQuery) {
-
+func (db *Database) Delete(query DeleteQuery) (int, error) {
+	return 0, nil
 }
 
 func tableFilePath(dbDir string, tableName string) string {
@@ -401,6 +429,48 @@ func loadData(dbDir string, tables map[string]Schema) (map[string][][]interface{
 	}
 
 	return tableData, nil
+}
+
+func (db *Database) writeToFile(tableName string, newRows [][]interface{}) error {
+	tableFilePath := tableFilePath(db.dbDir, tableName)
+	data, err := ioutil.ReadFile(tableFilePath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read file %s: %w", tableFilePath, err)
+	}
+
+	var rows [][]interface{}
+	var file *os.File
+	defer func() {
+		if file != nil {
+			checkFileClose(tableFilePath, file.Close())
+		}
+	}()
+
+	if os.IsNotExist(err) {
+		rows = make([][]interface{}, 0)
+	} else {
+		err := json.Unmarshal(data, &rows)
+		if err != nil {
+			return fmt.Errorf("failed to decode JSON from %s: %w", tableFilePath, err)
+		}
+	}
+
+	file, err = os.Create(tableFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to create/open file for write %s: %w", tableFilePath, err)
+	}
+
+	rows = append(rows, newRows...)
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "\t")
+
+	err = encoder.Encode(rows)
+	if err != nil {
+		return fmt.Errorf("failed to encode JSON and write to file for %s: %w", tableFilePath, err)
+	}
+
+	return nil
 }
 
 func checkFileClose(filePath string, err error) {
