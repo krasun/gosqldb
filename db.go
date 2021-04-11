@@ -168,6 +168,8 @@ func (db *Database) Select(query SelectQuery) ([][]interface{}, error) {
 		}
 	}
 
+	fmt.Println(matched)
+
 	return matched, nil
 }
 
@@ -182,8 +184,22 @@ func matches(schema Schema, row []interface{}, exprs []WhereExpression) bool {
 }
 
 func exprMatch(schema Schema, row []interface{}, expr WhereExpression) bool {
+	left := extractVal(schema, row, expr.Left)
+	right := extractVal(schema, row, expr.Right)
 
-	return true
+	return right == left
+}
+
+func extractVal(schema Schema, row []interface{}, operand Operand) interface{} {
+	if operand.Type == "value" {
+		return operand.Value
+	}
+
+	// identifier
+	column := operand.Value.(string)
+	p := schema.Columns[column].Position
+
+	return row[p]
 }
 
 // Insert inserts data into the database.

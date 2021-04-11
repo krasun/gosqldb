@@ -5,21 +5,21 @@ package main
 type CreateTableQuery struct {
 	TableName string
 	Columns   []struct {
-		Name       string
-		Type       string
+		Name string
+		Type string
 	}
 }
 
 // SelectQuery is a DQL (Data Query Language) query for fetching data from the database.
 type SelectQuery struct {
-	From    string
-	Where   []WhereExpression	
+	From  string
+	Where []WhereExpression
 }
 
 // Operand is an operand in WHERE expression
 type Operand struct {
 	Value interface{}
-	Type  string
+	Type  string // identifier or value
 }
 
 // WhereExpression represents WHERE part expressions of the SQL query.
