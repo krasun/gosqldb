@@ -234,7 +234,7 @@ func validateOperand(schema Schema, operand Operand) (reflect.Type, error) {
 		column := strings.ToLower(val)
 		_, exists := schema.Columns[column]
 		if !exists {
-			return nil, fmt.Errorf("column %s does not exist")
+			return nil, fmt.Errorf("column %s does not exist", column)
 		}
 
 		return schema.Columns[column].ReflectType(), nil
