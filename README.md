@@ -1,4 +1,4 @@
-# trie
+# gosqldb
 
 [![Build Status](https://travis-ci.com/krasun/gosqldb.svg?branch=main)](https://travis-ci.com/krasun/gosqldb)
 [![codecov](https://codecov.io/gh/krasun/gosqldb/branch/main/graph/badge.svg?token=8NU6LR4FQD)](https://codecov.io/gh/krasun/gosqldb)
