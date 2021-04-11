@@ -5,12 +5,18 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
 	"os"
 	"path"
 	"reflect"
 	"regexp"
 	"strings"
 )
+
+var columnTypes = map[string]struct{}{
+	"integer": {},
+	"string":  {},
+}
 
 // regular expressions to check table and column names
 var entityNameRegExp = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
@@ -123,7 +129,6 @@ func (db *Database) CreateTable(query CreateTableQuery) error {
 	}
 
 	tableColumns := make(map[string]ColumnDef)
-
 	// to detect column definition duplicates
 	columnNames := make(map[string]struct{})
 	for columnPosition, column := range query.Columns {
@@ -149,7 +154,6 @@ func (db *Database) CreateTable(query CreateTableQuery) error {
 
 		tableColumns[columnName] = ColumnDef{Name: columnName, Type: columnType, Position: columnPosition}
 	}
-
 	table := Schema{Name: tableName, Columns: tableColumns}
 
 	db.tables[tableName] = table
@@ -171,7 +175,7 @@ func (db *Database) Select(query SelectQuery) ([][]interface{}, error) {
 
 	err := validateWhereExpr(schema, query.Where)
 	if err != nil {
-		return nil, fmt.Errorf("invalid WHERE statement: %w", err)
+		return nil, fmt.Errorf("invalid WHERE part: %w", err)
 	}
 
 	tableData := db.data[tableName]
@@ -187,20 +191,19 @@ func (db *Database) Select(query SelectQuery) ([][]interface{}, error) {
 
 func validateWhereExpr(schema Schema, whereExprs []WhereExpression) error {
 	for i, expr := range whereExprs {
-		_, err := validateOperand(schema, expr.Left)
+		lt, err := validateOperand(schema, expr.Left)
 		if err != nil {
 			return fmt.Errorf("invalid left operand at %d: %w", i, err)
 		}
 
-		_, err = validateOperand(schema, expr.Right)
+		rt, err := validateOperand(schema, expr.Right)
 		if err != nil {
 			return fmt.Errorf("invalid right operand at %d: %w", i, err)
 		}
 
-		// how to validate types:
-		// if rt != lt {
-		// 	return fmt.Errorf("operand types do not match: %s != %s", lt, rt)
-		// }
+		if rt != lt {
+			return fmt.Errorf("operand types do not match: %s != %s", lt, rt)
+		}
 
 		err = validateOperation(expr.Operation)
 		if err != nil {
@@ -224,7 +227,7 @@ func validateOperand(schema Schema, operand Operand) (reflect.Type, error) {
 	operandType := strings.ToLower(operand.Type)
 	switch operandType {
 	case "value":
-		return reflect.TypeOf(operand.Value), nil
+		return valueType(operand.Value), nil
 	case "identifier":
 		val, ok := operand.Value.(string)
 		if !ok {
@@ -273,22 +276,22 @@ func extractVal(schema Schema, row []interface{}, operand Operand) interface{} {
 }
 
 // Insert inserts data into the database.
-func (db *Database) Insert(query InsertQuery) error {
+func (db *Database) Insert(query InsertQuery) (int, error) {
 	tableName := strings.ToLower(query.TableName)
 	table, exists := db.tables[tableName]
 	if !exists {
-		return fmt.Errorf("table %s does not exist", tableName)
+		return 0, fmt.Errorf("table %s does not exist", tableName)
 	}
 
 	if len(query.Values) == 0 {
-		return fmt.Errorf("empty values, at least one is required")
+		return 0, fmt.Errorf("empty values, at least one is required")
 	}
 
 	var insertColumns = make(map[string]int)
 	for index, column := range query.Columns {
 		columnName := strings.ToLower(column)
 		if _, exists := table.Columns[columnName]; !exists {
-			return fmt.Errorf("column %s does not exist in table %s", column, tableName)
+			return 0, fmt.Errorf("column %s does not exist in table %s", column, tableName)
 		}
 
 		insertColumns[columnName] = index
@@ -296,32 +299,79 @@ func (db *Database) Insert(query InsertQuery) error {
 
 	for _, requiredColumn := range table.Columns {
 		if _, exists := insertColumns[requiredColumn.Name]; !exists {
-			return fmt.Errorf("%s column value is not provided", requiredColumn.Name)
+			return 0, fmt.Errorf("%s column value is not provided", requiredColumn.Name)
 		}
 	}
 
 	for row, values := range query.Values {
 		if len(values) != len(query.Columns) {
-			return fmt.Errorf("the number of values must be equal to the number of columns at row %d", row)
+			return 0, fmt.Errorf("the number of values must be equal to the number of columns at row %d", row)
 		}
 	}
 
 	newRows := sortValues(table, insertColumns, query.Values)
-	err := db.writeToFile(tableName, newRows)
+	err := db.writeToFileNewRows(tableName, newRows)
 	if err != nil {
-		return fmt.Errorf("failed to write to file: %w", err)
+		return 0, fmt.Errorf("failed to write to file: %w", err)
 	}
 	log.Printf("the record has been inserted succesfully into %s", tableName)
 
 	// store the data in-memory
 	db.data[tableName] = append(db.data[tableName], newRows...)
 
-	return nil
+	return len(newRows), nil
 }
 
 // Update updates data in the database.
 func (db *Database) Update(query UpdateQuery) (int, error) {
-	return 0, nil
+	tableName := strings.ToLower(query.TableName)
+	schema, exists := db.tables[tableName]
+	if !exists {
+		return 0, fmt.Errorf("table %s does not exist", tableName)
+	}
+
+	err := validateWhereExpr(schema, query.Where)
+	if err != nil {
+		return 0, fmt.Errorf("invalid WHERE part: %w", err)
+	}
+
+	err = validateExpr(schema, query.Set)
+	if err != nil {
+		return 0, fmt.Errorf("invalid SET part: %w", err)
+	}
+
+	tableData := db.data[tableName]
+	updCnt := 0
+	updateRows := make(map[int][]interface{})
+	for index, row := range tableData {
+		if matches(schema, row, query.Where) {
+			updateRows[index] = updateValues(schema, query.Set, row)
+			updCnt++
+		}
+	}
+
+	err = db.updateRowsInFile(tableName, updateRows)
+	if err != nil {
+		return 0, fmt.Errorf("failed to update file: %w", err)
+	}
+	log.Printf("the records has been updated succesfully for %s", tableName)
+
+	// update the data in-memory
+	for index, updateRow := range updateRows {
+		db.data[tableName][index] = updateRow
+	}
+
+	return updCnt, nil
+}
+
+func updateValues(schema Schema, exprs []SetExpression, row []interface{}) []interface{} {
+	newRow := make([]interface{}, len(row))
+	copy(newRow, row)
+	for _, expr := range exprs {
+		newRow[schema.Columns[expr.Column].Position] = expr.Value
+	}
+
+	return newRow
 }
 
 // Delete deletes data from the database.
@@ -331,6 +381,48 @@ func (db *Database) Delete(query DeleteQuery) (int, error) {
 
 func tableFilePath(dbDir string, tableName string) string {
 	return path.Join(dbDir, tableName) + tableFileExtension
+}
+
+func validateExpr(schema Schema, exprs []SetExpression) error {
+	updateCol := make(map[string]struct{})
+	for i, expr := range exprs {
+		col := strings.ToLower(expr.Column)
+		if _, ok := updateCol[col]; ok {
+			return fmt.Errorf("column %s is mentioned twice", col)
+		}
+
+		err := validateSetExpr(schema, col, expr.Value)
+		if err != nil {
+			return fmt.Errorf("invalid expression at %d: %w", i, err)
+		}
+
+		updateCol[col] = struct{}{}
+	}
+
+	return nil
+}
+
+func validateSetExpr(schema Schema, column string, value interface{}) error {
+	colDef, exists := schema.Columns[column]
+	if !exists {
+		return fmt.Errorf("column %s does not exist", column)
+	}
+
+	vt := valueType(value)
+	ct := colDef.ReflectType()
+	if ct != vt {
+		return fmt.Errorf("types do not match: column type = %s, value type = %s", ct, vt)
+	}
+
+	return nil
+}
+
+func valueType(value interface{}) reflect.Type {
+	if f, ok := value.(float64); ok && math.Trunc(f) == f {
+		return reflect.TypeOf(0)
+	}
+
+	return reflect.TypeOf(value)
 }
 
 func sortValues(table Schema, insertColumns map[string]int, values [][]interface{}) [][]interface{} {
@@ -431,7 +523,23 @@ func loadData(dbDir string, tables map[string]Schema) (map[string][][]interface{
 	return tableData, nil
 }
 
-func (db *Database) writeToFile(tableName string, newRows [][]interface{}) error {
+func (db *Database) updateRowsInFile(tableName string, updateRows map[int][]interface{}) error {
+	return db.updateFile(tableName, func(rows [][]interface{}) ([][]interface{}, error) {
+		for index, newRow := range updateRows {
+			rows[index] = newRow
+		}
+
+		return rows, nil
+	})
+}
+
+func (db *Database) writeToFileNewRows(tableName string, newRows [][]interface{}) error {
+	return db.updateFile(tableName, func(rows [][]interface{}) ([][]interface{}, error) {
+		return append(rows, newRows...), nil
+	})
+}
+
+func (db *Database) updateFile(tableName string, updateRows func([][]interface{}) ([][]interface{}, error)) error {
 	tableFilePath := tableFilePath(db.dbDir, tableName)
 	data, err := ioutil.ReadFile(tableFilePath)
 	if err != nil && !os.IsNotExist(err) {
@@ -460,12 +568,15 @@ func (db *Database) writeToFile(tableName string, newRows [][]interface{}) error
 		return fmt.Errorf("failed to create/open file for write %s: %w", tableFilePath, err)
 	}
 
-	rows = append(rows, newRows...)
+	newRows, err := updateRows(rows)
+	if err != nil {
+		return fmt.Errorf("failed to update rows: %w", err)
+	}
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "\t")
 
-	err = encoder.Encode(rows)
+	err = encoder.Encode(newRows)
 	if err != nil {
 		return fmt.Errorf("failed to encode JSON and write to file for %s: %w", tableFilePath, err)
 	}

@@ -1,0 +1,17 @@
+{
+	"restaraunts": {
+		"name": "restaraunts",
+		"columns": {
+			"id": {
+				"name": "id",
+				"type": "integer",
+				"position": 0
+			},
+			"name": {
+				"name": "name",
+				"type": "string",
+				"position": 1
+			}
+		}
+	}
+}

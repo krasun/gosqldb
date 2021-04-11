@@ -45,6 +45,11 @@ func decodeQuery(queryType string, requestBody io.ReadCloser) (interface{}, erro
 		err := decode(&query, requestBody)
 
 		return query, err
+	case "update":
+		var query UpdateQuery
+		err := decode(&query, requestBody)
+
+		return query, err
 	default:
 		return nil, fmt.Errorf("unsupported query type %s", queryType)
 	}
@@ -66,7 +71,7 @@ func executeQuery(db *Database, q interface{}) (interface{}, error) {
 	case SelectQuery:
 		return db.Select(query)	
 	case InsertQuery:
-		return nil, db.Insert(query)	
+		return db.Insert(query)	
 	case UpdateQuery: 
 		return db.Update(query)
 	case DeleteQuery: 

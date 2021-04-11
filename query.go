@@ -41,18 +41,16 @@ type UpdateQuery struct {
 	TableName string
 	Where     []WhereExpression
 	Set       []SetExpression
-	Limit     int
 }
 
 // SetExpression represents the SET part in the UPDATE SQL query.
 type SetExpression struct {
-	ColumnName string
-	Value      string
+	Column string
+	Value  interface{}
 }
 
 // DeleteQuery is a DML (Data Manipulation Language) query for deleting data from the database.
 type DeleteQuery struct {
 	TableName string
-	Where     []WhereExpression
-	Limit     int
+	Where     []WhereExpression	
 }
