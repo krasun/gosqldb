@@ -4,7 +4,6 @@
 [![codecov](https://codecov.io/gh/krasun/gosqldb/branch/main/graph/badge.svg?token=8NU6LR4FQD)](https://codecov.io/gh/krasun/gosqldb)
 [![Go Report Card](https://goreportcard.com/badge/github.com/krasun/gosqldb)](https://goreportcard.com/report/github.com/krasun/gosqldb)
 [![GoDoc](https://godoc.org/https://godoc.org/github.com/krasun/gosqldb?status.svg)](https://godoc.org/github.com/krasun/gosqldb)
-[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fkrasun%2Fgosqldb.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fkrasun%2Fgosqldb?ref=badge_shield)
 
 How to use databases effectively? Understand them better. 
 How do you understand them better? Reinvent! 
@@ -18,10 +17,10 @@ gosqldb is a database implementation created solely for my learning exploration 
 - [X] select;
 - [X] update;
 - [X] delete;
-- [ ] table lock;
-- [ ] LSM; 
+- [ ] table lock/row lock;
+- [ ] LSM tree;
 - [ ] B-tree;
-- [ ] parse SQL;
+- [ ] SQL parser.
 
 ## License 
 
