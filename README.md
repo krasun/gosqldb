@@ -1,27 +1,26 @@
 # gosqldb
 
-[![Build Status](https://travis-ci.com/krasun/gosqldb.svg?branch=main)](https://travis-ci.com/krasun/gosqldb)
+[![Build Status](https://app.travis-ci.com/krasun/gosqldb.svg?branch=main)](https://app.travis-ci.com/krasun/gosqldb)
 [![codecov](https://codecov.io/gh/krasun/gosqldb/branch/main/graph/badge.svg?token=8NU6LR4FQD)](https://codecov.io/gh/krasun/gosqldb)
 [![Go Report Card](https://goreportcard.com/badge/github.com/krasun/gosqldb)](https://goreportcard.com/report/github.com/krasun/gosqldb)
 [![GoDoc](https://godoc.org/https://godoc.org/github.com/krasun/gosqldb?status.svg)](https://godoc.org/github.com/krasun/gosqldb)
 
-How to use databases effectively? Understand them better. 
-How do you understand them better? Reinvent! 
+`gosqldb` is a fully functional key-value persistent database written in Go that supports different storage engines and simple SQL. 
 
-gosqldb is a database implementation created solely for my learning exploration of how databases work.
+**It is not intended for production use**. The primary purpose of the database is to learn and experiment with different storage engines and database concepts. 
 
-## Roadmap 
+Features: 
+- [simple SQL](https://github.com/krasun/gosqlparse) to execute queries against the database; 
+- [in-file B+ tree](https://github.com/krasun/fbptree) storage engine; 
+- [LSM tree](https://github.com/krasun/lsmtree) storage engine;
+- [in-memory B+ tree](https://github.com/krasun/bptree) storage engine;  
+- the code is structured and optimized for learning purposes; 
+- the core parts of the database are separate projects on their own. 
 
-- [X] create table DDL query;
-- [X] insert;
-- [X] select;
-- [X] update;
-- [X] delete;
-- [ ] table lock/row lock;
-- [ ] LSM tree;
-- [ ] B-tree;
-- [ ] SQL parser.
+## Play 
+
+... 
 
 ## License 
 
-gosqldb is released under [the MIT license](LICENSE).
+**gosqldb** is released under [the MIT license](LICENSE).
