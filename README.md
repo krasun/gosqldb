@@ -10,7 +10,7 @@
 **It is not intended for production use**. The primary purpose of the database is to learn and experiment with different storage engines and database concepts. 
 
 Features: 
-- [simple SQL](https://github.com/krasun/gosql) to execute queries against the database; 
+- [simple SQL](https://github.com/krasun/gosqlparser) to execute queries against the database; 
 - [in-file B+ tree](https://github.com/krasun/fbptree) storage engine; 
 - [LSM tree](https://github.com/krasun/lsmtree) storage engine;
 - [in-memory B+ tree](https://github.com/krasun/bptree) storage engine;  
