@@ -5,6 +5,8 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/krasun/gosqldb)](https://goreportcard.com/report/github.com/krasun/gosqldb)
 [![GoDoc](https://godoc.org/https://godoc.org/github.com/krasun/gosqldb?status.svg)](https://godoc.org/github.com/krasun/gosqldb)
 
+**WORK IN PROGRESS**
+
 `gosqldb` is a fully functional key-value persistent database written in Go that supports different storage engines and simple SQL. 
 
 **It is not intended for production use**. The primary purpose of the database is to learn and experiment with different storage engines and database concepts. 
