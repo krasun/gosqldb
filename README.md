@@ -7,17 +7,26 @@
 
 **WORK IN PROGRESS**
 
-`gosqldb` is a fully functional key-value persistent database written in Go that supports different storage engines and simple SQL. 
+`gosqldb` is a fully functional persistent database written in Go that supports different storage engines and simple SQL. 
 
 **It is not intended for production use**. The primary purpose of the database is to learn and experiment with different storage engines and database concepts. 
 
-Features: 
+The database consists of small parts like parsers and engines that are developed as isolated independent packages
+that can be used separately: 
+
+- [a simple SQL parser](https://github.com/krasun/gosqlparser) to execute queries against the database; 
+- [in-file B+ tree](https://github.com/krasun/fbptree); 
+- [LSM tree](https://github.com/krasun/lsmtree);
+- [in-memory B+ tree](https://github.com/krasun/bptree).
+
+## Features 
+
+There is a set of features:
 - [simple SQL](https://github.com/krasun/gosqlparser) to execute queries against the database; 
 - [in-file B+ tree](https://github.com/krasun/fbptree) storage engine; 
 - [LSM tree](https://github.com/krasun/lsmtree) storage engine;
 - [in-memory B+ tree](https://github.com/krasun/bptree) storage engine;  
-- the code is structured and optimized for learning purposes; 
-- the core parts of the database are separate projects on their own. 
+- the code is structured and optimized for learning purposes. 
 
 ## Play 
 
