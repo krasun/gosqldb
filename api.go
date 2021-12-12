@@ -1,17 +1,18 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
+
+	sql "github.com/krasun/gosqlparser"
 )
 
 func handler(db *Database) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		queryType := r.Header.Get("x-query-type")
-		query, err := decodeQuery(queryType, r.Body)
+		query, err := parseQuery(r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -24,62 +25,37 @@ func handler(db *Database) func(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		fmt.Fprintf(w, "the query has been succesfully executed: %v\n", result)
+		fmt.Fprintf(w, "the query has been successfully executed: %v\n", result)
 	}
 }
 
-func decodeQuery(queryType string, requestBody io.ReadCloser) (interface{}, error) {
-	switch queryType {
-	case "create_table":
-		var query CreateTableQuery
-		err := decode(&query, requestBody)
-
-		return query, err
-	case "insert":
-		var query InsertQuery
-		err := decode(&query, requestBody)
-
-		return query, err
-	case "select":
-		var query SelectQuery
-		err := decode(&query, requestBody)
-
-		return query, err
-	case "update":
-		var query UpdateQuery
-		err := decode(&query, requestBody)
-
-		return query, err
-	case "delete":
-		var query DeleteQuery
-		err := decode(&query, requestBody)
-
-		return query, err
-	default:
-		return nil, fmt.Errorf("unsupported query type %s", queryType)
-	}
-}
-
-func decode(query interface{}, requestBody io.ReadCloser) error {
-	err := json.NewDecoder(requestBody).Decode(query)
+func parseQuery(requestBody io.ReadCloser) (sql.Statement, error) {
+	body, err := ioutil.ReadAll(requestBody)
 	if err != nil {
-		return fmt.Errorf("failed to decode JSON: %w", err)
+		return nil, fmt.Errorf("failed to read request body: %w", err)
 	}
 
-	return nil
+	query, err := sql.Parse(string(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse body: %w", err)
+	}
+
+	return query, nil
 }
 
-func executeQuery(db *Database, q interface{}) (interface{}, error) {
+func executeQuery(db *Database, q sql.Statement) (interface{}, error) {
 	switch query := q.(type) {
-	case CreateTableQuery:
+	case *sql.CreateTable:
 		return nil, db.CreateTable(query)
-	case SelectQuery:
+	case *sql.DropTable:
+		return nil, db.DropTable(query)
+	case *sql.Select:
 		return db.Select(query)
-	case InsertQuery:
+	case *sql.Insert:
 		return db.Insert(query)
-	case UpdateQuery:
+	case *sql.Update:
 		return db.Update(query)
-	case DeleteQuery:
+	case *sql.Delete:
 		return db.Delete(query)
 	default:
 		return nil, fmt.Errorf("unsupported query type: %T", query)

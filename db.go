@@ -11,6 +11,8 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+
+	sql "github.com/krasun/gosqlparser"
 )
 
 var columnTypes = map[string]struct{}{
@@ -108,24 +110,28 @@ func NewDatabase(dbDir string) (*Database, error) {
 	}, nil
 }
 
+func (db *Database) DropTable(query *sql.DropTable) error {
+	panic("not implemented")
+}
+
 // CreateTable creates a table.
-func (db *Database) CreateTable(query CreateTableQuery) error {
-	tableName := strings.ToLower(query.TableName)
+func (db *Database) CreateTable(query *sql.CreateTable) error {
+	tableName := strings.ToLower(query.Name)
 	if len(tableName) == 0 {
 		return fmt.Errorf("table name is empty")
 	}
 
 	if !isValidTableNameFormat(tableName) {
-		return fmt.Errorf("table name %s is not valid, expected format: %s", query.TableName, tableNameRegExp)
+		return fmt.Errorf("table name %s is not valid, expected format: %s", query.Name, tableNameRegExp)
 	}
 
 	_, exists := db.tables[tableName]
 	if exists {
-		return fmt.Errorf("table %s exists (table names are case-insensitive)", query.TableName)
+		return fmt.Errorf("table %s exists (table names are case-insensitive)", query.Name)
 	}
 
 	if len(query.Columns) == 0 {
-		return fmt.Errorf("failed to create %s: table must have at least one column", query.TableName)
+		return fmt.Errorf("failed to create %s: table must have at least one column", query.Name)
 	}
 
 	tableColumns := make(map[string]ColumnDef)
@@ -134,7 +140,7 @@ func (db *Database) CreateTable(query CreateTableQuery) error {
 	for columnPosition, column := range query.Columns {
 		columnName := strings.ToLower(column.Name)
 		if len(columnName) == 0 {
-			return fmt.Errorf("column name is empty for table %s", query.TableName)
+			return fmt.Errorf("column name is empty for table %s", query.Name)
 		}
 
 		if !isValidColumnNameFormat(tableName) {
@@ -166,8 +172,8 @@ func (db *Database) CreateTable(query CreateTableQuery) error {
 }
 
 // Select fetches data from the database.
-func (db *Database) Select(query SelectQuery) ([][]interface{}, error) {
-	tableName := strings.ToLower(query.From)
+func (db *Database) Select(query *sql.Select) ([][]interface{}, error) {
+	tableName := strings.ToLower(query.Table)
 	schema, exists := db.tables[tableName]
 	if !exists {
 		return nil, fmt.Errorf("table %s does not exist", tableName)
@@ -189,7 +195,7 @@ func (db *Database) Select(query SelectQuery) ([][]interface{}, error) {
 	return matched, nil
 }
 
-func validateWhereExpr(schema Schema, whereExprs []WhereExpression) error {
+func validateWhereExpr(schema Schema, where *sql.Where) error {
 	for i, expr := range whereExprs {
 		lt, err := validateOperand(schema, expr.Left)
 		if err != nil {
@@ -246,7 +252,7 @@ func validateOperand(schema Schema, operand Operand) (reflect.Type, error) {
 	}
 }
 
-func matches(schema Schema, row []interface{}, exprs []WhereExpression) bool {
+func matches(schema Schema, row []interface{}, exprs *sql.Where) bool {
 	for _, expr := range exprs {
 		if !exprMatch(schema, row, expr) {
 			return false
@@ -276,8 +282,8 @@ func extractVal(schema Schema, row []interface{}, operand Operand) interface{} {
 }
 
 // Insert inserts data into the database.
-func (db *Database) Insert(query InsertQuery) (int, error) {
-	tableName := strings.ToLower(query.TableName)
+func (db *Database) Insert(query *sql.Insert) (int, error) {
+	tableName := strings.ToLower(query.Table)
 	table, exists := db.tables[tableName]
 	if !exists {
 		return 0, fmt.Errorf("table %s does not exist", tableName)
@@ -323,8 +329,8 @@ func (db *Database) Insert(query InsertQuery) (int, error) {
 }
 
 // Update updates data in the database.
-func (db *Database) Update(query UpdateQuery) (int, error) {
-	tableName := strings.ToLower(query.TableName)
+func (db *Database) Update(query *sql.Update) (int, error) {
+	tableName := strings.ToLower(query.Table)
 	schema, exists := db.tables[tableName]
 	if !exists {
 		return 0, fmt.Errorf("table %s does not exist", tableName)
@@ -375,8 +381,8 @@ func updateValues(schema Schema, exprs []SetExpression, row []interface{}) []int
 }
 
 // Delete deletes data from the database.
-func (db *Database) Delete(query DeleteQuery) (int, error) {
-	tableName := strings.ToLower(query.TableName)
+func (db *Database) Delete(query *sql.Delete) (int, error) {
+	tableName := strings.ToLower(query.Table)
 	schema, exists := db.tables[tableName]
 	if !exists {
 		return 0, fmt.Errorf("table %s does not exist", tableName)
