@@ -15,9 +15,9 @@ import (
 	sql "github.com/krasun/gosqlparser"
 )
 
-var columnTypes = map[string]struct{}{
-	"integer": {},
-	"string":  {},
+var columnTypes = map[sql.ColumnType]struct{}{
+	sql.TypeInteger: {},
+	sql.TypeString:  {},
 }
 
 // regular expressions to check table and column names
@@ -58,16 +58,16 @@ type Schema struct {
 
 // ColumnDef describes a table column.
 type ColumnDef struct {
-	Name     string `json:"name"`
-	Type     string `json:"type"`
-	Position int    `json:"position"`
+	Name     string         `json:"name"`
+	Type     sql.ColumnType `json:"type"`
+	Position int            `json:"position"`
 }
 
 func (def ColumnDef) ReflectType() reflect.Type {
 	switch def.Type {
-	case "integer":
+	case sql.TypeInteger:
 		return reflect.TypeOf(0)
-	case "string":
+	case sql.TypeString:
 		return reflect.TypeOf("")
 	}
 
@@ -151,7 +151,7 @@ func (db *Database) CreateTable(query *sql.CreateTable) error {
 			return fmt.Errorf("%s definition is repeated (column names are case-insensitive)", column.Name)
 		}
 
-		columnType := strings.ToLower(column.Type)
+		columnType := column.Type
 		if _, exists := columnTypes[columnType]; !exists {
 			return fmt.Errorf("%s type definition is not found for column %s", column.Type, column.Name)
 		}
@@ -426,7 +426,7 @@ func tableFilePath(dbDir string, tableName string) string {
 	return path.Join(dbDir, tableName) + tableFileExtension
 }
 
-func validateExpr(schema Schema, exprs []SetExpression) error {
+func validateExpr(schema Schema, exprs []sql.Update) error {
 	updateCol := make(map[string]struct{})
 	for i, expr := range exprs {
 		col := strings.ToLower(expr.Column)
