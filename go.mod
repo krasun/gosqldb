@@ -2,4 +2,4 @@ module github.com/krasun/gosqldb
 
 go 1.14
 
-require github.com/krasun/gosqlparser v1.0.4 // indirect
+require github.com/krasun/gosqlparser v1.0.5
