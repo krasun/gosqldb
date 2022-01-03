@@ -54,6 +54,7 @@ type Database struct {
 type Schema struct {
 	Name    string               `json:"name"`
 	Columns map[string]ColumnDef `json:"columns"`
+	Engine  sql.EngineType       `json:"engine"`
 }
 
 // ColumnDef describes a table column.
@@ -160,7 +161,7 @@ func (db *Database) CreateTable(query *sql.CreateTable) error {
 
 		tableColumns[columnName] = ColumnDef{Name: columnName, Type: columnType, Position: columnPosition}
 	}
-	table := Schema{Name: tableName, Columns: tableColumns}
+	table := Schema{Name: tableName, Columns: tableColumns, Engine: query.Engine}
 
 	db.tables[tableName] = table
 	err := storeSchema(db.metaFilePath, db.tables)
