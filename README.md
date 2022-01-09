@@ -1,6 +1,6 @@
 # gosqldb
 
-[![Build Status](https://app.travis-ci.com/krasun/gosqldb.svg?branch=main)](https://app.travis-ci.com/krasun/gosqldb)
+[![Build](https://github.com/krasun/gosqldb/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/krasun/gosqldb/actions/workflows/build.yml)
 [![codecov](https://codecov.io/gh/krasun/gosqldb/branch/main/graph/badge.svg?token=8NU6LR4FQD)](https://codecov.io/gh/krasun/gosqldb)
 [![Go Report Card](https://goreportcard.com/badge/github.com/krasun/gosqldb)](https://goreportcard.com/report/github.com/krasun/gosqldb)
 [![GoDoc](https://godoc.org/https://godoc.org/github.com/krasun/gosqldb?status.svg)](https://godoc.org/github.com/krasun/gosqldb)
